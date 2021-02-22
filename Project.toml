@@ -1,0 +1,4 @@
+name = "LinkedParser"
+uuid = "28fd2c0c-3be6-44d2-8eca-b08606b59e83"
+authors = ["Dilschat <dilschat@yandex.ru>"]
+version = "0.1.0"
