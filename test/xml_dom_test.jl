@@ -89,6 +89,10 @@ end
 @testset "Attribute setattributevalue" begin
     buffer = StringBuffer("abc=\"cde\"")
     attr = Attribute(buffer, 1:3, 6:8)
+    element = Element(buffer, 2:5, attr, nothing, nothing, nothing)
+    attr.parent = element
+    doc = Document(buffer, element)
+    element.parent = doc
     @test getvalue(attr) == "cde"
     setattributevalue!(attr, "p")
     @test getvalue(attr) == "p"
@@ -223,7 +227,22 @@ end
     childelmnt = Element(buffer, 8:12, txt, nothing)
     element = Element(buffer, 2:5, nothing, childelmnt, nothing, nothing)
     doc = Document(buffer, element)
-    setparent!(element, doc)
+    element.parent = doc
     @test doc["name"] == element
     @test string(doc) == "<name><name1>value</name1></name><!--Your comment-->"
+end
+
+@testset "Alignment test" begin
+    buffer = StringBuffer("abc1_cde2_qwe3")
+    attr1 = Attribute(buffer, 1:3, 5:10, nothing, nothing)
+    attr2 = Attribute(buffer, 6:8, 3:4, nothing, attr1)
+    attr3 = Attribute(buffer, 11:13, 3:4, nothing, attr2)
+    attr4 = Attribute(buffer, 1:3, 5:10, nothing, attr3)
+    attrs_with_offsets = ((attr2, 2), (attr1, 1), (attr3, 3), (attr4, 4))
+    @test _findmaxlength(attrs_with_offsets) == 11
+    @test _findmostleft(attrs_with_offsets) == 1
+    @test _isless(attrs_with_offsets, ((attr1, 2),)) == true
+    @test _isless(attrs_with_offsets, ((attr1, -1),)) == false
+    @test _sortbyoffset((((attr3, 3),), ((attr1, 1), (attr2, 2)), ((attr4, 4),),)) == (((attr1, 1), (attr2, 2)), ((attr3, 3),), ((attr4, 4),), )
+    @test map(p -> (getname(p[1][1]), length(p)), _groupby(p -> getname(p[1]), attrs_with_offsets)) == (("abc", 2), ("cde",1), ("qwe", 1), )
 end

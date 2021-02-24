@@ -10,18 +10,18 @@ getnext(node::AbstractElement) = nothing
 shift!(node::AbstractElement, offset::Int64, whocalled::Type = Element) = throw(MethodError(shift!, "method should be implemented"))
 shift!(n::Nothing, i::Int64, whocalled) = nothing
 setposition!(node::AbstractElement, position::Position) = throw(MethodError("method should be implemented"))
-getvalue(AbstractElement) = throw(MethodError("method should be implemented"))
-print(AbstractElement) = throw(MethodError("method should be implemented"))
+getvalue(node::AbstractElement) = throw(MethodError("method should be implemented"))
+print(node::AbstractElement) = throw(MethodError("method should be implemented"))
 
-getposition(AbstractElement) = throw(MethodError("method should be implemented"))
+getposition(node::AbstractElement) = throw(MethodError("method should be implemented"))
 
-getattribute(AbstractElement) = throw(MethodError("method should be implemented"))
-setattribute!(AbstractElement) = throw(MethodError("method should be implemented"))
+getattribute(node::AbstractElement) = throw(MethodError("method should be implemented"))
+setattribute!(node::AbstractElement) = throw(MethodError("method should be implemented"))
 
-get(AbstractElement) = throw(MethodError("method should be implemented"))
-get(AbstractElement) = throw(MethodError("method should be implemented"))
+get(node::AbstractElement) = throw(MethodError("method should be implemented"))
+get(node::AbstractElement) = throw(MethodError("method should be implemented"))
 
-append!(AbstractElement) = throw(MethodError("method should be implemented"))
+append!(node::AbstractElement) = throw(MethodError("method should be implemented"))
 shift!(node::Nothing, i::Int64) = nothing
 Parent = Union{AbstractElement,Nothing}
 
@@ -34,7 +34,6 @@ TextElement(input::StringBuffer, value::Position) = TextElement(input, value, no
 getvalue(node::TextElement) = node.input[node.value]
 getposition(node::TextElement) = node.value
 Base.print(io::IO, node::TextElement) = Base.print(io, getvalue(node))
-shift!(node::TextElement, offset::Int64, whocalled::Type{Element}) = node.value = node.value .+ offset
 Base.last(node::TextElement) = node
 mutable struct Attribute <: AbstractElement
     input::StringBuffer
@@ -51,7 +50,7 @@ getname(node::Attribute) = node.input[node.name]
 getnext(node::Attribute) = node.next
 getposition(node::Attribute) = first(node.name):last(node.value)+1
 getvalue(node::Attribute) = node.input[node.value]
-
+getparent(node::Attribute) = node.parent
 Base.last(node::Attribute) =  begin
     while !isnothing(node.next)
         node = next
@@ -143,6 +142,7 @@ Base.getindex(node::Element, key::Int64, default = nothing) = begin
     end
     return default
 end
+getparent(node::Element) = node.parent
 
 alignattributes!(node::Element) = begin
     values = getvalue(node)
@@ -192,21 +192,25 @@ _normalizeindents(attributes_with_offsets::Tuple, requiredoffset::Int64) = begin
     return cumulativeoffset
 end
 
-_groupby(f, collection::Tuple)::SortedDict = begin
+_groupby(f, collection) = begin
     sorteddtuple = ()
     for i in collection
         if isempty(sorteddtuple)
-            sorteddtuple = ((i))
+            sorteddtuple = ((i,),)
             continue
         else
+            found = false
             temp = ()
             for group in sorteddtuple
                 if getname(i[1]) == getname(group[1][1])
-                    temp = (temp..., (group..., i))
-                    continue
+                    temp = (temp..., (group..., i,),)
+                    found = true
+                else
+                    temp = (temp..., group,)
                 end
-                temp = (temp..., (i))
+
             end
+            if !found temp = (temp..., (i,),) end
             sorteddtuple = temp
         end
     end
@@ -214,20 +218,20 @@ _groupby(f, collection::Tuple)::SortedDict = begin
     return sorteddtuple
 end
 
-_sortbyoffset(collection::Tuple) = begin
+_sortbyoffset(collection) = begin
     sorted = ()
     for attrs_with_offset in collection
         if isempty(sorted)
-            sorted = (i)
+            sorted = (attrs_with_offset,)
             continue
         end
         for i in eachindex(sorted)
             if _isless(attrs_with_offset, sorted[i])
-                sorted = (sorted[begin:i-1]..., attrs_with_offset, sorted[i:end]...)
+                sorted = (sorted[begin:i-1]..., attrs_with_offset, sorted[i:end]..., )
                 break
             end
             if i == length(sorted)
-                sorted = (sorted..., attrs_with_offset)
+                sorted = (sorted..., attrs_with_offset, )
                 break
             end
         end
@@ -235,12 +239,11 @@ _sortbyoffset(collection::Tuple) = begin
     return sorted
 end
 
- _isless(a::Tuple, b::Tuple) = _findmostleft(a) < _findmostleft(b)
+_isless(a::Tuple, b::Tuple) = _findmostleft(a) < _findmostleft(b)
 
-_findmostleft(attributes_with_offsets::Tuple) = minimum(a -> a[2], attributes)
+_findmostleft(attributes_with_offsets::Tuple) = minimum(a -> a[2], attributes_with_offsets)
 
-_finxmaxlength(attributes_with_offsets::Tuple) = maximim(a -> length(getposition(a[1])), attributes)
-
+_findmaxlength(attributes_with_offsets::Tuple) = maximum(a -> length(getposition(a[1])), attributes_with_offsets)
 
 setparent!(dest::Element, parent::Parent) = dest.parent = parent
 setnext!(dest::Element, newelmnt::Element) = dest.next = newelmnt
@@ -283,6 +286,7 @@ shift!(node::Element, offset::Int64, whocalled::Type{Attribute}) = begin
     shift!(node.value, offset, Element)
     isnothing(node.next) ? shift!(node.parent, offset, ChildElement) : shift!(node.next, offset, Element)
 end
+shift!(node::TextElement, offset::Int64, whocalled::Type{Element}) = node.value = node.value .+ offset
 
 Base.print(io::IO, node::Element) = print(io, node.input, getposition(node))
 
