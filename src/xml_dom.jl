@@ -1,5 +1,6 @@
 import Base.print
 abstract type AbstractElement end
+include("string_buffer.jl")
 
 Base.iterate(node::AbstractElement, state::AbstractElement = node) = (state, getnext(state))
 Base.iterate(node::AbstractElement, state::Nothing) = nothing
@@ -53,7 +54,7 @@ getvalue(node::Attribute) = node.input[node.value]
 getparent(node::Attribute) = node.parent
 Base.last(node::Attribute) =  begin
     while !isnothing(node.next)
-        node = next
+        node = node.next
     end
     return node
 end
@@ -143,6 +144,12 @@ Base.getindex(node::Element, key::Int64, default = nothing) = begin
     return default
 end
 getparent(node::Element) = node.parent
+Base.last(node::Element) = begin
+    while !isnothing(node.next)
+        node = node.next
+    end
+    return node
+end
 
 alignattributes!(node::Element) = begin
     values = getvalue(node)
@@ -247,6 +254,30 @@ _findmaxlength(attributes_with_offsets::Tuple) = maximum(a -> length(getposition
 
 setparent!(dest::Element, parent::Parent) = dest.parent = parent
 setnext!(dest::Element, newelmnt::Element) = dest.next = newelmnt
+setvalue!(dest::Element, child) = dest.value = child
+addattribute!(element::Element, attribute::Attribute) = begin
+    if isnothing(element.attributes)
+        element.attributes = attribute
+        attribute.parent = element
+        return
+    end
+    lastattribute = last(element.attributes)
+    lastattribute.next = attribute
+    attribute.parent = element
+end
+
+addchild!(parent_element::Element, element::Element) = begin
+    parent_element.value = _getupdatedchild!(parent_element.value, element)
+    element.parent = parent_element
+end
+
+_getupdatedchild!(value::Nothing, newchild::Element) = newchild
+_getupdatedchild!(value::TextElement, newchild::Element) = throw(DomainError(value, "cannot add child to text"))
+_getupdatedchild!(value::Element, newchild::Element) = begin
+    lastelement = last(value)
+    lastelement.next = newchild
+    return lastelement
+end
 Base.append!(node::Element, name::String, value::String) = begin
     newnode = "<$name>$value</$name>"
     lastchild = last(node.value)
@@ -265,6 +296,9 @@ Base.append!(node::Element, name::String, value::String) = begin
     insert!(node.input, newnode, offset)
 end
 
+Element(input::StringBuffer, name::Position) = begin
+    Element(input, name, nothing, nothing, nothing, nothing)
+end
 Element(input::StringBuffer, name::Position, value::TextElement, parent::Parent) = begin
     new_element = Element(input, name, nothing, value, nothing, parent)
     return new_element

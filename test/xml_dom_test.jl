@@ -246,3 +246,28 @@ end
     @test _sortbyoffset((((attr3, 3),), ((attr1, 1), (attr2, 2)), ((attr4, 4),),)) == (((attr1, 1), (attr2, 2)), ((attr3, 3),), ((attr4, 4),), )
     @test map(p -> (getname(p[1][1]), length(p)), _groupby(p -> getname(p[1]), attrs_with_offsets)) == (("abc", 2), ("cde",1), ("qwe", 1), )
 end
+
+@testset "add attribute test" begin
+    buffer = StringBuffer("<name><name1>value</name1></name>")
+    txt = TextElement(buffer, 14:18)
+    childelmnt = Element(buffer, 8:12, txt, nothing)
+    element = Element(buffer, 2:5, nothing, childelmnt, nothing, nothing)
+    attr1 = Attribute(buffer, 1:2, 3:4)
+    attr2 = Attribute(buffer, 1:2, 3:4)
+    addattribute!(element, attr1)
+    @test element.attributes == attr1
+    addattribute!(element, attr2)
+    @test element.attributes.next == attr2
+end
+
+@testset "add child test" begin
+    buffer = StringBuffer("<name><name1>value</name1></name>")
+    txt = TextElement(buffer, 14:18)
+    element = Element(buffer, 2:5, nothing, nothing, nothing, nothing)
+    childelmnt1 = Element(buffer, 8:12, txt, nothing)
+    childelmnt2 = Element(buffer, 8:12, txt, nothing)
+    addchild!(element, childelmnt1)
+    @test element.value == childelmnt1
+    addchild!(element, childelmnt2)
+    @test element.value.next == childelmnt2
+end
