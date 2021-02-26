@@ -11,68 +11,89 @@ end
 Base.showerror(io::IO, e::XmlException) = print(io, "Invalid xml ", e.var, "!")
 
 function parse_xml(input::String)::Document
-    lexer = PreprocessLexer(input)
+    lexer = Lexer(input)
     return parse_xml(lexer)
 end
 
-function parse_xml(lexer::PreprocessLexer)::Document
+function parse_xml(lexer::Lexer)::Document
     buffer = StringBuffer(lexer.input)
     element = _parse_element(lexer, buffer, 1)
     document = Document(buffer, element)
     return document
 end
 
-function _parse_element(lexer::PreprocessLexer, buffer::StringBuffer,  state::Int)
+"""
+    Parses all elements, returns root element
+"""
+function _parse_element(lexer::Lexer, buffer::StringBuffer, state::Int)
     stack = Stack{Element}()
     while (next = iterate(lexer, state)) != nothing
-        (lexeme, next_state) = next
-        if gettokentype(lexeme) == START_TAG
-            state = _parsestartelement(lexer, buffer, lexeme, next_state, stack)
-        elseif gettokentype(lexeme) == START_CLOSE_TAG ||
-                gettokentype(lexeme) == CLOSE_START_TAG
-            (element, state) = _parsecloseelement(lexer,buffer, lexeme, next_state, stack)
+        (lexeme, nextstate) = next
+        if getlexemetype(lexeme) == START_TAG
+            state = _parsestartelement(lexer, buffer, lexeme, nextstate, stack)
+        elseif getlexemetype(lexeme) == START_CLOSE_TAG ||
+               getlexemetype(lexeme) == CLOSE_START_TAG
+            (element, state) =
+                _parsecloseelement(lexer, buffer, lexeme, nextstate, stack)
             if !isnothing(element)
                 next = iterate(lexer, state)
                 if !isnothing(next)
-                    throw(XmlException("can't parse element at position $state"))
+                    throw(
+                        XmlException("can't parse element at position $state"),
+                    )
                 end
                 return element
             end
-        elseif gettokentype(lexeme) == IDENTIFIER
-            state = _parseattributes(lexer, buffer, lexeme, next_state, stack)
-        elseif gettokentype(lexeme) == TEXT
-            state = _parsetext(lexer, buffer, lexeme, next_state, stack)
-        elseif gettokentype(lexeme) == ERROR
+        elseif getlexemetype(lexeme) == IDENTIFIER
+            state = _parseattributes(lexer, buffer, lexeme, nextstate, stack)
+        elseif getlexemetype(lexeme) == TEXT
+            state = _parsetext(lexer, buffer, lexeme, nextstate, stack)
+        elseif getlexemetype(lexeme) == ERROR
             throw(XmlException("can't parse xml at position $state"))
-        elseif gettokentype(lexeme) == CLOSE_TAG
-            state = next_state
+        elseif getlexemetype(lexeme) == CLOSE_TAG
+            state = nextstate
         end
     end
-    if !isempty(stack) throw(XmlException("can't parse xml at position $state")) end
+    if !isempty(stack)
+        throw(XmlException("can't parse xml at position $state"))
+    end
 end
 
-_parsestartelement(lexer::PreprocessLexer, buffer::StringBuffer, Lexeme::Lexeme, next_state::Int64, stack::Stack) = begin
-    (lexeme, next_state) = _getnext(lexer, next_state)
-    if gettokentype(lexeme) == IDENTIFIER
+_parsestartelement(
+    lexer::Lexer,
+    buffer::StringBuffer,
+    Lexeme::Lexeme,
+    nextstate::Int64,
+    stack::Stack,
+) = begin
+    (lexeme, nextstate) = _getnext(lexer, nextstate)
+    if getlexemetype(lexeme) == IDENTIFIER
         element = Element(buffer, getposition(lexeme))
         push!(stack, element)
     else
-        throw(XmlException("can't parse xml at position $next_state"))
+        throw(XmlException("can't parse xml at position $nextstate"))
     end
     try
-        return _skipcloselexeme(lexer, next_state)
+        return _skipcloselexeme(lexer, nextstate)
     catch e
-        return next_state
+        return nextstate
     end
 end
 
-_parsecloseelement(lexer::PreprocessLexer, buffer::StringBuffer, lexeme::Lexeme, next_state::Int64, stack::Stack) = begin
+_parsecloseelement(
+    lexer::Lexer,
+    buffer::StringBuffer,
+    lexeme::Lexeme,
+    nextstate::Int64,
+    stack::Stack,
+) = begin
     element = pop!(stack)
-    if gettokentype(lexeme) == CLOSE_START_TAG
-    elseif gettokentype(lexeme) == START_CLOSE_TAG
-        (lexeme, next_state) = _getnext(lexer, next_state)
-        if gettokentype(lexeme) != IDENTIFIER || getname(element) != buffer[getposition(lexeme)]
-            throw(XmlException("can't parse xml at position $next_state"))
+    if getlexemetype(lexeme) == CLOSE_START_TAG
+    elseif getlexemetype(lexeme) == START_CLOSE_TAG
+        (lexeme, nextstate) = _getnext(lexer, nextstate)
+        if getlexemetype(lexeme) != IDENTIFIER ||
+           getname(element) != buffer[getposition(lexeme)]
+            throw(XmlException("can't parse xml at position $nextstate"))
         end
     end
 
@@ -81,65 +102,86 @@ _parsecloseelement(lexer::PreprocessLexer, buffer::StringBuffer, lexeme::Lexeme,
         try
             addchild!(parent_element, element)
         catch e
-            throw(XmlException("can't parse xml at position $next_state"))
+            throw(XmlException("can't parse xml at position $nextstate"))
         end
-        if gettokentype(lexeme) == CLOSE_START_TAG
-            return (nothing, next_state)
+        if getlexemetype(lexeme) == CLOSE_START_TAG
+            return (nothing, nextstate)
         end
-        return (nothing, _skipcloselexeme(lexer, next_state))
+        return (nothing, _skipcloselexeme(lexer, nextstate))
     else
-        if gettokentype(lexeme) == CLOSE_START_TAG
-            return (element, next_state)
+        if getlexemetype(lexeme) == CLOSE_START_TAG
+            return (element, nextstate)
         end
-        return (element, _skipcloselexeme(lexer, next_state))
+        return (element, _skipcloselexeme(lexer, nextstate))
     end
 end
 
-_parseattributes(lexer::PreprocessLexer, buffer::StringBuffer, lexeme::Lexeme, next_state::Int64, stack::Stack) = begin
-    next = (lexeme, next_state)
+_parseattributes(
+    lexer::Lexer,
+    buffer::StringBuffer,
+    lexeme::Lexeme,
+    nextstate::Int64,
+    stack::Stack,
+) = begin
+    next = (lexeme, nextstate)
     while next != nothing
-        (lexeme, next_state) = next
-        if gettokentype(lexeme) == CLOSE_TAG || gettokentype(lexeme) == CLOSE_START_TAG
+        (lexeme, nextstate) = next
+        if getlexemetype(lexeme) == CLOSE_TAG ||
+           getlexemetype(lexeme) == CLOSE_START_TAG
             return first(getposition(lexeme))
         end
-        (attribute, next_state) = _parseattribute(lexer, buffer, lexeme, next_state)
+        (attribute, nextstate) =
+            _parseattribute(lexer, buffer, lexeme, nextstate)
         element = first(stack)
         addattribute!(element, attribute)
-        next = _getnext(lexer, next_state)
+        next = _getnext(lexer, nextstate)
     end
 end
 
-_parseattribute(lexer, buffer, lexeme, next_state) = begin
+_parseattribute(lexer, buffer, lexeme, nextstate) = begin
     name = lexeme
-    (lexeme, next_state) = _getnext(lexer, next_state)
-    if gettokentype(lexeme) != OPERATOR
-        throw(XmlException("can't parse xml at position $next_state"))
+    (lexeme, nextstate) = _getnext(lexer, nextstate)
+    if getlexemetype(lexeme) != OPERATOR
+        throw(XmlException("can't parse xml at position $nextstate"))
     end
-    (attrval, next_state) = _getnext(lexer, next_state)
-    if gettokentype(attrval) != ATTRIBUTEVALUE
-        throw(XmlException("can't parse xml at position $next_state"))
+    (attrval, nextstate) = _getnext(lexer, nextstate)
+    if getlexemetype(attrval) != ATTRIBUTEVALUE
+        throw(XmlException("can't parse xml at position $nextstate"))
     end
-    return (Attribute(buffer, getposition(name), first(getposition(attrval))+1:last(getposition(attrval))-1), next_state)
+    return (
+        Attribute(
+            buffer,
+            getposition(name),
+            first(getposition(attrval))+1:last(getposition(attrval))-1,
+        ),
+        nextstate,
+    )
 end
 
-_parsetext(lexer::PreprocessLexer, buffer::StringBuffer, lexeme::Lexeme, next_state::Int64, stack::Stack) = begin
+_parsetext(
+    lexer::Lexer,
+    buffer::StringBuffer,
+    lexeme::Lexeme,
+    nextstate::Int64,
+    stack::Stack,
+) = begin
     text = TextElement(buffer, getposition(lexeme))
     element = first(stack)
     if isnothing(element)
-        throw(XmlException("can't parse xml at position $next_state"))
+        throw(XmlException("can't parse xml at position $nextstate"))
     end
     value = getvalue(element)
     if isnothing(value)
         setvalue!(element, text)
     else
-        throw(XmlException("can't parse xml at position $next_state"))
+        throw(XmlException("can't parse xml at position $nextstate"))
     end
-    return next_state
+    return nextstate
 end
 
 _skipcloselexeme(lexer, state) = begin
     (lexeme, nextstate) = _getnext(lexer, state)
-    if gettokentype(lexeme) != CLOSE_TAG
+    if getlexemetype(lexeme) != CLOSE_TAG
         throw(XmlException("can't parse xml at position $state"))
     end
     return nextstate

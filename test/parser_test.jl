@@ -29,3 +29,16 @@ end
     @test getname(element.root) == "name"
     @test getname(element.root.value) == "asfasfasf"
 end
+
+@testset "error test" begin
+    xml = "< name B=\"A> <   asfasfasf   /> </name>"
+    @test_throws XmlException parse_xml(xml)
+    xml = "< name B\"A\"> <   asfasfasf   /> </name>"
+    @test_throws XmlException parse_xml(xml)
+    xml = "< name =\"A\"> <   asfasfasf   /> </name>"
+    @test_throws XmlException parse_xml(xml)
+    # xml = "< name B=\"A\" <   asfasfasf   /> </name>"
+    # @test_throws XmlException parse_xml(xml)
+    xml = "< name B=\"A\"> <   asfasfasf   /> </na>"
+    @test_throws XmlException parse_xml(xml)
+end
