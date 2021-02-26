@@ -1,7 +1,7 @@
 import Base.iterate
 include("position.jl")
 
-@enum PreprocessToken begin
+@enum LexemeType begin
     START_TAG       #<
     START_CLOSE_TAG #</
     CLOSE_TAG       #>
@@ -14,93 +14,104 @@ include("position.jl")
 end
 
 struct Lexeme
-    token::PreprocessToken
+    token::LexemeType
     position::Position
 end
 
-gettokentype(lexeme::Lexeme) = lexeme.token
+getlexemetype(lexeme::Lexeme) = lexeme.token
 getposition(lexeme::Lexeme) = lexeme.position
 
-struct PreprocessLexer
+struct Lexer
     input::String
 end
 
-getinput(lexer::PreprocessLexer) = lexer.input
+getinput(lexer::Lexer) = lexer.input
 
-iterate(lexer::PreprocessLexer, state::Int = 1) = begin
+"""
+    Iterates over all accessible lexemes presented in input from Lexer.
+"""
+iterate(lexer::Lexer, state::Int = 1) = begin
     input = lexer.input
-    length = ncodeunits(input)
-    if state > length
+    inputlength = ncodeunits(input)
+    currentposition = state
+    if currentposition > inputlength
         return nothing
     end
-    curpos = state
-    while curpos <= length &&(input[curpos] == ' ' || input[curpos] == '\n')
-        curpos += 1
+    while currentposition <= inputlength &&
+        (input[currentposition] == ' ' || input[currentposition] == '\n')
+        currentposition += 1
     end
-    if curpos > ncodeunits(input)
+
+    if currentposition > ncodeunits(input)
         return nothing
-    elseif input[curpos] == '<'
-        return _processopentag(lexer, curpos)
-    elseif  input[curpos] == '>'
-        return (Lexeme(CLOSE_TAG, curpos:curpos), curpos + 1)
-    elseif input[curpos] == '/'
-        _processclosetag(lexer, curpos)
-    elseif input[curpos] == '='
-        return (Lexeme(OPERATOR, curpos:curpos), curpos + 1)
-    elseif input[curpos] == '"'
-        return _processstringvalue(lexer, curpos)
+    elseif input[currentposition] == '<'
+        return _processopentag(lexer, currentposition)
+    elseif input[currentposition] == '>'
+        return (
+            Lexeme(CLOSE_TAG, currentposition:currentposition),
+            currentposition + 1,
+        )
+    elseif input[currentposition] == '/'
+        _processclosetag(lexer, currentposition)
+    elseif input[currentposition] == '='
+        return (
+            Lexeme(OPERATOR, currentposition:currentposition),
+            currentposition + 1,
+        )
+    elseif input[currentposition] == '"'
+        return _processstringvalue(lexer, currentposition)
     elseif state > 1 && input[state-1] == '>'
-        _processtext(lexer, curpos)
-    elseif input[curpos] == '_' || isletter(input[curpos])
-        return _processidentifier(lexer, curpos)
+        _processtext(lexer, currentposition)
+    elseif input[currentposition] == '_' || isletter(input[currentposition])
+        return _processidentifier(lexer, currentposition)
     else
-        return (Lexeme(ERROR, curpos:curpos), curpos)
+        return (Lexeme(ERROR, currentposition:currentposition), currentposition)
     end
 end
 
-_processopentag(lexer::PreprocessLexer, i::Int64) = begin
-    if i+1 > ncodeunits(lexer.input)
-        return (Lexeme(START_TAG, i:i), i+1)
+_processopentag(lexer::Lexer, i::Int64) = begin
+    if i + 1 > ncodeunits(lexer.input)
+        return (Lexeme(START_TAG, i:i), i + 1)
     elseif lexer.input[i+1] == '!'
         next = _skipcomment(lexer, i)
         if isnothing(next)
-            return (Lexeme(ERROR, i:i), i+1)
+            return (Lexeme(ERROR, i:i), i + 1)
         end
         return iterate(lexer, next)
     elseif lexer.input[i+1] == '/'
-        return (Lexeme(START_CLOSE_TAG, i:i+1), i+2)
+        return (Lexeme(START_CLOSE_TAG, i:i+1), i + 2)
     elseif lexer.input[i+1] == '_' || isletter(lexer.input[i])
-        return (Lexeme(START_TAG, i:i), i+1)
+        return (Lexeme(START_TAG, i:i), i + 1)
     else
-        return (Lexeme(START_TAG, i:i), i+1)
+        return (Lexeme(START_TAG, i:i), i + 1)
     end
 end
 
-_skipcomment(lexer::PreprocessLexer, i::Int64) = begin
+_skipcomment(lexer::Lexer, i::Int64) = begin
     c = _getchar(lexer, i)
     c != '<' && return nothing
-    c = _getchar(lexer, i+1)
+    c = _getchar(lexer, i + 1)
     c != '!' && return nothing
-    c = _getchar(lexer, i+2)
+    c = _getchar(lexer, i + 2)
     c != '-' && return nothing
-    c = _getchar(lexer, i+3)
+    c = _getchar(lexer, i + 3)
     c != '-' && return nothing
     i = i + 4
     while _getchar(lexer, i) != '>'
-        i+=1
+        i += 1
     end
-    c = _getchar(lexer, i-1)
+    c = _getchar(lexer, i - 1)
     c != '-' && return nothing
-    c = _getchar(lexer, i-2)
+    c = _getchar(lexer, i - 2)
     c != '-' && return nothing
-    return i+1
+    return i + 1
 end
 
 _processclosetag(lexer, i) = begin
     if lexer.input[i+1] == '>'
-        return (Lexeme(CLOSE_START_TAG, i:i+1), i+2)
+        return (Lexeme(CLOSE_START_TAG, i:i+1), i + 2)
     else
-        return (Lexeme(ERROR, i:i), i+1)
+        return (Lexeme(ERROR, i:i), i + 1)
     end
 end
 
@@ -112,9 +123,11 @@ _processstringvalue(lexer, i) = begin
         i += 1
     end
     if i == length && lexer.input[i] != '"'
-        return (Lexeme(ERROR, start:i), i+1)
+        return (Lexeme(ERROR, start:i), i + 1)
+    elseif i > length
+        return (Lexeme(ERROR, start:i), i + 1)
     end
-    return (Lexeme(ATTRIBUTEVALUE, start:i), i+1)
+    return (Lexeme(ATTRIBUTEVALUE, start:i), i + 1)
 end
 
 _processidentifier(lexer, i) = begin
@@ -122,8 +135,13 @@ _processidentifier(lexer, i) = begin
     input = lexer.input
     start = i
     i += 1
-    while i <= length && (isletter(input[i]) || isdigit(input[i]) || input[i] == '_' ||
-            input[i] == '.' || input[i] == '-' )
+    while i <= length && (
+        isletter(input[i]) ||
+        isdigit(input[i]) ||
+        input[i] == '_' ||
+        input[i] == '.' ||
+        input[i] == '-'
+    )
         i += 1
     end
     return (Lexeme(IDENTIFIER, start:i-1), i)
@@ -148,7 +166,7 @@ _processtext(lexer, i) = begin
     return (Lexeme(TEXT, start:lastnotwhitespace), i)
 end
 
-_getchar(lexer::PreprocessLexer, i::Int64) = begin
+_getchar(lexer::Lexer, i::Int64) = begin
     length = ncodeunits(lexer.input)
     if i > length
         return nothing
