@@ -1,7 +1,8 @@
 import Base.print
 abstract type AbstractElement end
 include("string_buffer.jl")
-include("position.jl")
+
+Position = UnitRange{Int64}
 
 Base.iterate(node::AbstractElement, state::AbstractElement = node) = (state, getnext(state))
 Base.iterate(node::AbstractElement, state::Nothing) = nothing
@@ -189,20 +190,6 @@ alignattributes!(prev::Tuple, maxbound::Int64) = begin
         maxbound = requiredoffset + _findmaxlength(attributes)
     end
     return cumulativeoffset
-
-
-    # while !isempty(collectted_attrs)
-    #     attrs_with_offsets = map(a -> (a, first(getposition(a)) - findprev(a.input, "\n", first(getposition(a)))), collectted_attrs)
-    #     groupped_attrs = _groupby(p -> getname(p[1]), attrs_with_offsets)
-    #     for attributes in groupped_attrs
-    #         minoffset = _findmostleft(attributes)
-    #         requiredoffset = minoffset > maxbound ? minoffset : maxbound+1
-    #         cumulativeoffset += _normalizeindents(attributes, requiredoffset)
-    #         maxbound = requiredoffset + _findmaxlength(attributes)
-    #     end
-    #     collectted_attrs = filter(p -> !isnothing(p), map(p -> p.next, collectted_attrs))
-    # end
-    # return cumulativeoffset
 end
 
 _normalizeindents(attributes_with_offsets::Tuple, requiredoffset::Int64) = begin
