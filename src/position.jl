@@ -1,4 +1,4 @@
-Position = Union{Nothing, UnitRange{Int}}
+Position = UnitRange{Int64}
 
 after_last(position::Position) = last(position) + 1
 before_first(position::Position) = first(position) - 1

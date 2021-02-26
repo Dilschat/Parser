@@ -10,47 +10,47 @@ include("../src/parser.jl")
 #     @test getvalue(doc["name"]) == nothing
 # end
 
-@testset "empty node test with attributes" begin
-    xml  = """
-    <name>
-        <name1  />
-        <name2  a="a" b    = "c"/>
-        <name3  a="a" b    = "c"/>
-        <name4  a="a" b    = "c"/>
-    </name>
-    """
-    doc = parse_xml(xml)
-    @test getvalue(getattribute(doc["name"]["name2"] , "a")) == "a"
-    @test getvalue(getattribute(doc["name"]["name4"] , "b")) == "c"
-
-    xml_appended  = """
-    <name>
-        <name1  />
-        <name2  a="a" b    = "c"/>
-        <name3  a="a" b    = "c"/>
-        <name4  a="a" b    = "c"/>
-        <new>new</new>
-    </name>
-    """
-println(doc.input)
-    Base.append!(doc["name"], "new", "new")
-println(doc.input)
-    xml_set_attribute  = """
-    <name>
-        <name1  />
-        <name2  a="abc"  b    = "c"/>
-        <name3  a="ad"   b    = "c"/>
-        <name4  a="abcd" b    = "new"/>
-        <new>new</new>
-    </name>
-    """
-
-    setattributevalue!(getattribute(doc["name"]["name4"] , "b"), "new")
-    setattributevalue!(getattribute(doc["name"]["name2"] , "a"), "abc")
-    setattributevalue!(getattribute(doc["name"]["name4"] , "a"), "abcd")
-    setattributevalue!(getattribute(doc["name"]["name3"] , "a"), "ad")
-    @test string(doc) == xml_set_attribute
-end
+# @testset "empty node test with attributes" begin
+#     xml  = """
+#     <name>
+#         <name1  />
+#         <name2  a="a" b    = "c"/>
+#         <name3  a="a" b    = "c"/>
+#         <name4  a="a" b    = "c"/>
+#     </name>
+#     """
+#     doc = parse_xml(xml)
+#     @test getvalue(getattribute(doc["name"]["name2"] , "a")) == "a"
+#     @test getvalue(getattribute(doc["name"]["name4"] , "b")) == "c"
+#
+#     xml_appended  = """
+#     <name>
+#         <name1  />
+#         <name2  a="a" b    = "c"/>
+#         <name3  a="a" b    = "c"/>
+#         <name4  a="a" b    = "c"/>
+#         <new>new</new>
+#     </name>
+#     """
+# println(doc.input)
+#     Base.append!(doc["name"], "new", "new")
+# println(doc.input)
+#     xml_set_attribute  = """
+#     <name>
+#         <name1  />
+#         <name2  a="abc"  b    = "c"/>
+#         <name3  a="ad"   b    = "c"/>
+#         <name4  a="abcd" b    = "new"/>
+#         <new>new</new>
+#     </name>
+#     """
+#
+#     setattributevalue!(getattribute(doc["name"]["name4"] , "b"), "new")
+#     setattributevalue!(getattribute(doc["name"]["name2"] , "a"), "abc")
+#     setattributevalue!(getattribute(doc["name"]["name4"] , "a"), "abcd")
+#     setattributevalue!(getattribute(doc["name"]["name3"] , "a"), "ad")
+#     @test string(doc) == xml_set_attribute
+# end
 
 
 @testset "example test" begin
@@ -103,7 +103,7 @@ end
     """
 
     doc = parse_xml(example)
-
+    @btime parse_xml($example)
     @test string(doc) == example
 
     expected = """
@@ -112,8 +112,9 @@ end
   <C A="G" />
 
   <S AlwaysOn="true">
-    <xE M="03:00:00"                   T="S" />
-    <xE M="04:00:00" Date="2019:12:09" T="S" />
+    <xE M="123"               T="S" />
+    <xE M="04:00:00" Date="0" T="S" />
+    <new>new</new>
   </S>
 
   <AutoStart>false</AutoStart> <!-- DO NOT DELETE ME -->
@@ -154,9 +155,23 @@ end
 
 </cfg>
     """
+    @test string(getvalue(doc["cfg"]["E"]["S1"])) == "s1"
+    @test getvalue(getattribute(doc["cfg"]["P"] , "C")) == "100"
+    @test getvalue(getattribute(doc["cfg"]["Url"] , "u")) == "url"
+    @test getvalue(getattribute(doc["cfg"]["L"] , "A")) == "true"
     Base.append!(doc["cfg"]["AAA"], "new", "new")
     setattributevalue!(getattribute(doc["cfg"]["AAA"][2] , "F"), "222220000")
-    println(doc)
+    @btime setattributevalue!(getattribute($doc["cfg"]["S"][2] , "Date"), "0")
+    setattributevalue!(getattribute(doc["cfg"]["S"][2] , "Date"), "0")
+    setattributevalue!(getattribute(doc["cfg"]["S"][1] , "M"), "123")
+    @test getvalue(getattribute(doc["cfg"]["S"][1] , "M")) == "123"
+    @test getvalue(getattribute(doc["cfg"]["AAA"][2] , "F")) == "222220000"
+    @test getvalue(getattribute(doc["cfg"]["Url"] , "u")) == "url"
+    Base.append!(doc["cfg"]["S"], "new", "new")
+    @test string(getvalue(doc["cfg"]["E"]["S1"])) == "s1"
+    @test getvalue(getattribute(doc["cfg"]["L"] , "A")) == "true"
+
+    @test getvalue(getattribute(doc["cfg"]["P"] , "C")) == "100"
     @test string(doc) == expected
 
 end

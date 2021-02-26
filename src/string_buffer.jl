@@ -7,6 +7,7 @@ mutable struct StringBuffer
     size::UInt32
 end
 
+#TODO add abstract type using simple traits
 StringBuffer(size::Int) = StringBuffer(Vector{UInt8}(undef, size), 0)
 
 function StringBuffer(input::String)
@@ -28,14 +29,14 @@ function Base.setindex!(buffer::StringBuffer, char::Char, i::Integer)
     buffer.value[i] = char
 end
 
-#TODO more effectively just setindex?
+#TODO setindex?
 function Base.setindex!(buffer::StringBuffer, str::String, range::UnitRange{Int64})
     !_in_bounds(buffer, range) && throw(BoundsError("Defined range is incorrect range: $range"))
     ncodeunits(str) != length(range) && throw(BoundsError("Incompatable sizes str: $str range: $range"))
     unsafe_copyto!(buffer.value, first(range), unsafe_wrap(Vector{UInt8}, str), 1, length(range))
 end
 
-Base.findprev(buffer::StringBuffer, val::String, startidx::UInt32) = begin
+Base.findprev(buffer::StringBuffer, val::String, startidx::Int64) = begin
     stringvector = unsafe_wrap(Vector{UInt8}, val)
     valuelength = ncodeunits(val)
     endidx = valuelength + startidx - 1
@@ -54,7 +55,7 @@ Base.findprev(buffer::StringBuffer, val::String, startidx::UInt32) = begin
     return nothing
 end
 
-Base.findnext(buffer::StringBuffer, val::String, startidx::UInt32) = begin
+Base.findnext(buffer::StringBuffer, val::String, startidx::Int64) = begin
     stringvector = unsafe_wrap(Vector{UInt8}, val)
     length = ncodeunits(val)
     endidx = length + startidx - 1
@@ -90,7 +91,7 @@ function Base.insert!(buffer::StringBuffer, str::String, i::Integer)
     required_capacity = buffer.size + ncodeunits(str)
     required_capacity > capacity(buffer) && _resize!(buffer, required_capacity)
     #shift
-    unsafe_copyto!(buffer.value, i + ncodeunits(str), buffer.value, i, ncodeunits(str))
+    unsafe_copyto!(buffer.value, i + ncodeunits(str), buffer.value, i, buffer.size - i + 1)
     #insert
     unsafe_copyto!(buffer.value, i, unsafe_wrap(Vector{UInt8}, str), 1, ncodeunits(str))
     buffer.size = required_capacity
@@ -98,7 +99,7 @@ end
 
 function Base.delete!(buffer::StringBuffer, range::UnitRange)
     !_in_bounds(buffer, range) && throw(BoundsError("Bound error size: $size range: $range"))
-    unsafe_copyto!(buffer.value, first(range), buffer.value, last(range) +1 , length(range))
+    unsafe_copyto!(buffer.value, first(range), buffer.value, last(range) +1 , buffer.size - last(range))
     buffer.size = buffer.size - length(range)
 end
 
@@ -118,7 +119,7 @@ function Base.replace!(buffer::StringBuffer, new_val::String, range::UnitRange)
 end
 #reinterpret?
 Base.print(io::IO, buffer::StringBuffer) = unsafe_write(io, pointer(buffer.value), buffer.size)
-print(io::IO, buffer::StringBuffer, range::UnitRange) =
+Base.print(io::IO, buffer::StringBuffer, range::UnitRange) =
     unsafe_write(io, pointer(buffer.value) + first(range) - 1, length(range))
 
 function _resize!(buffer::StringBuffer, required_size::Integer)

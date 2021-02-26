@@ -244,7 +244,6 @@ end
     @test _isless(attrs_with_offsets, ((attr1, 2),)) == true
     @test _isless(attrs_with_offsets, ((attr1, -1),)) == false
     @test _sortbyoffset((((attr3, 3),), ((attr1, 1), (attr2, 2)), ((attr4, 4),),)) == (((attr1, 1), (attr2, 2)), ((attr3, 3),), ((attr4, 4),), )
-    @test map(p -> (getname(p[1][1]), length(p)), _groupby(p -> getname(p[1]), attrs_with_offsets)) == (("abc", 2), ("cde",1), ("qwe", 1), )
 end
 
 @testset "add attribute test" begin

@@ -1,6 +1,7 @@
 import Base.print
 abstract type AbstractElement end
 include("string_buffer.jl")
+include("position.jl")
 
 Base.iterate(node::AbstractElement, state::AbstractElement = node) = (state, getnext(state))
 Base.iterate(node::AbstractElement, state::Nothing) = nothing
@@ -26,6 +27,11 @@ append!(node::AbstractElement) = throw(MethodError("method should be implemented
 shift!(node::Nothing, i::Int64) = nothing
 Parent = Union{AbstractElement,Nothing}
 
+struct Document <: AbstractElement
+    input::StringBuffer
+    root::AbstractElement
+end
+
 mutable struct TextElement <: AbstractElement
     input::StringBuffer
     value::Position
@@ -40,9 +46,19 @@ mutable struct Attribute <: AbstractElement
     input::StringBuffer
     name::Position
     value::Position
-    parent::Parent
-    next::Parent
+    parent::Union{AbstractElement,Nothing}
+    next::Union{Attribute,Nothing}
 end
+mutable struct Element <: AbstractElement
+    input::StringBuffer
+    name::Position
+    attributes::Union{Nothing, Attribute}
+    value::Union{TextElement, Element, Nothing}
+    parent::Union{Document, Element,Nothing}
+    next::Union{Element,Nothing}
+end
+ChildElement = Union{TextElement, Element, Nothing}
+
 
 Attribute(buffer::StringBuffer, name::Position, value::Position) =
     Attribute(buffer, name, value, nothing, nothing)
@@ -61,9 +77,10 @@ end
 setnext!(dest::Attribute, newattr::Attribute) = last(dest).next = newattr
 setattributevalue!(node::Attribute, value::String) = begin
     old_length = length(node.value)
-    offset = ncodeunits(value) - old_length
+    new_length = ncodeunits(value)
+    offset = new_length - old_length
     replace!(node.input, value, node.value)
-    node.value = first(node.value):first(node.value)+ncodeunits(value)-1
+    node.value = first(node.value):first(node.value)+new_length-1
     shift!(node.next, offset)
     shift!(node.parent, offset, Attribute)
     alignattributes!(getparent(getparent(node)))
@@ -77,15 +94,7 @@ end
 
 Base.print(io::IO, node::Attribute) = print(io, node.input, getposition(node))
 
-ChildElement = Union{AbstractElement, Nothing}
-mutable struct Element <: AbstractElement
-    input::StringBuffer
-    name::Position
-    attributes::Union{Nothing, Attribute}
-    value::ChildElement
-    parent::Parent
-    next::Parent
-end
+
 
 getnext(node::Element) = node.next
 getname(node::Element) = node.input[node.name]
@@ -166,18 +175,34 @@ end
 alignattributes!(prev::Tuple, maxbound::Int64) = begin
     collectted_attrs = filter(i -> !isnothing(i), prev)
     cumulativeoffset = 0
+    allattrs = ()
     while !isempty(collectted_attrs)
-        attrs_with_offsets = map(a -> (a, first(getposition(a)) - findprev(a.input, "\n", first(getposition(a)))), collectted_attrs)
-        groupped_attrs = _groupby(p -> getname(p[1]), attrs_with_offsets)
-        for attributes in groupped_attrs
-            minoffset = _findmostleft(attributes)
-            requiredoffset = minoffset > maxbound ? minoffset : maxbound+1
-            cumulativeoffset += _normalizeindents(attributes, requiredoffset)
-            maxbound = requiredoffset + _findmaxlength(attributes)
-        end
+        allattrs = (allattrs..., collectted_attrs...,)
         collectted_attrs = filter(p -> !isnothing(p), map(p -> p.next, collectted_attrs))
     end
+    groupped_attrs = _groupby(p -> getname(p), allattrs)
+    for attributes in groupped_attrs
+        attributes = _update_offsets(attributes)
+        minoffset = _findmostleft(attributes)
+        requiredoffset = minoffset > maxbound ? minoffset : maxbound+1
+        cumulativeoffset += _normalizeindents(attributes, requiredoffset)
+        maxbound = requiredoffset + _findmaxlength(attributes)
+    end
     return cumulativeoffset
+
+
+    # while !isempty(collectted_attrs)
+    #     attrs_with_offsets = map(a -> (a, first(getposition(a)) - findprev(a.input, "\n", first(getposition(a)))), collectted_attrs)
+    #     groupped_attrs = _groupby(p -> getname(p[1]), attrs_with_offsets)
+    #     for attributes in groupped_attrs
+    #         minoffset = _findmostleft(attributes)
+    #         requiredoffset = minoffset > maxbound ? minoffset : maxbound+1
+    #         cumulativeoffset += _normalizeindents(attributes, requiredoffset)
+    #         maxbound = requiredoffset + _findmaxlength(attributes)
+    #     end
+    #     collectted_attrs = filter(p -> !isnothing(p), map(p -> p.next, collectted_attrs))
+    # end
+    # return cumulativeoffset
 end
 
 _normalizeindents(attributes_with_offsets::Tuple, requiredoffset::Int64) = begin
@@ -194,6 +219,7 @@ _normalizeindents(attributes_with_offsets::Tuple, requiredoffset::Int64) = begin
             delete!(buffer, startposition+shift:startposition-1)
         shift!(a[1], shift)
         shift!(a[1].parent.value, shift)
+        #shift!(a[1].parent.parent.next, shift)
         cumulativeoffset += shift
     end
     return cumulativeoffset
@@ -201,6 +227,7 @@ end
 
 _groupby(f, collection) = begin
     sorteddtuple = ()
+    collection = _calculate_offsets(collection)
     for i in collection
         if isempty(sorteddtuple)
             sorteddtuple = ((i,),)
@@ -245,6 +272,9 @@ _sortbyoffset(collection) = begin
     end
     return sorted
 end
+
+_calculate_offsets(attributes) = map(a -> (a, first(getposition(a)) - findprev(a.input, "\n", first(getposition(a)))), attributes)
+_update_offsets(attributes) = map(a -> (a[1], first(getposition(a[1])) - findprev(a[1].input, "\n", first(getposition(a[1])))), attributes)
 
 _isless(a::Tuple, b::Tuple) = _findmostleft(a) < _findmostleft(b)
 
@@ -293,7 +323,7 @@ Base.append!(node::Element, name::String, value::String) = begin
     else
         startelement = first(getposition(lastchild))
         indentstart = Base.findprev(node.input, "\n", startelement)
-        indentsize = startelement - 1 - indentstart
+        indentsize = isnothing(indentstart) ? 0 : startelement - 1 - indentstart
         indent = "\n"*" "^(indentsize)
         newnode = indent*newnode
         textvalue = TextElement(node.input, valueposition .+ (indentsize+1))
@@ -314,33 +344,30 @@ end
 
 #TODO gереписать шифты, сделать их независимымыми
 shift!(node::Element, offset::Int64, whocalled::Type{ChildElement}) = begin
-    isnothing(node.next) ? shift!(node.parent, offset, ChildElement) : shift!(node.next, offset)
+    isnothing(node.next) ? shift!(node.parent, offset, ChildElement) : shift!(node.next, offset, Element)
 end
 
 shift!(node::Element, offset::Int64) = begin
     node.name = node.name .+ offset
     shift!(node.attributes, offset)
     shift!(node.value, offset)
+    if !isnothing(node.next) shift!(node.next, offset) end
 end
 shift!(node::Element, offset::Int64, whocalled::Type{Element}) = begin
     node.name = node.name .+ offset
     shift!(node.attributes, offset)
-    shift!(node.value, offset, Element)
+    shift!(node.value, offset)
     isnothing(node.next) ? shift!(node.parent, offset, ChildElement) : shift!(node.next, offset, Element)
 end
 
 shift!(node::Element, offset::Int64, whocalled::Type{Attribute}) = begin
-    shift!(node.value, offset, Element)
+    shift!(node.value, offset)
     isnothing(node.next) ? shift!(node.parent, offset, ChildElement) : shift!(node.next, offset, Element)
 end
-shift!(node::TextElement, offset::Int64, whocalled::Type{Element}) = node.value = node.value .+ offset
+shift!(node::TextElement, offset::Int64) = node.value = node.value .+ offset
 
 Base.print(io::IO, node::Element) = print(io, node.input, getposition(node))
 
-struct Document <: AbstractElement
-    input::StringBuffer
-    root::Element
-end
 
 alignattributes!(node::Document) = nothing
 
