@@ -153,47 +153,47 @@ end
 
 alignattributes!(node::Element) = begin
     values = getvalue(node)
-    maxbound = maximum(v -> last(getposition(v.name))+1, values)
+    maxbound = -1#maximum(v -> 1 + last(v.name) - findprev(node.input, "\n", first(v.name)), values)
     collected_values = ()
     for i in values
         collected_values = (collected_values..., i.attributes)
     end
-    cimulativeoffset = alignattributes!(collected_values, maxbound)
-    cimulativeoffset == 0 && return
-    shift(node, cumulativeoffset, Attribute)
+    cumulativeoffset = alignattributes!(collected_values, maxbound)
+    cumulativeoffset == 0 && return
+    shift!(node, cumulativeoffset, ChildElement)
 end
 
 alignattributes!(prev::Tuple, maxbound::Int64) = begin
-    collectted_attrs = prev
+    collectted_attrs = filter(i -> !isnothing(i), prev)
     cumulativeoffset = 0
     while !isempty(collectted_attrs)
-        attrs_with_offsets = map(a -> (a, findprev(a.input, "prev", first(getposition(a)))), collectted_attrs)
+        attrs_with_offsets = map(a -> (a, first(getposition(a)) - findprev(a.input, "\n", first(getposition(a)))), collectted_attrs)
         groupped_attrs = _groupby(p -> getname(p[1]), attrs_with_offsets)
         for attributes in groupped_attrs
             minoffset = _findmostleft(attributes)
-            cumulativeoffset += minoffset > maxbound ?
-                _normalizeindents(attributes, minoffset) :
-                _normalizeindents(attributes, maxbound+1)
-            maxbound = _findmaxlength(attributes) + minoffset > maxbound ?
-                _normalizeindents(attributes, minoffset) :
-                _normalizeindents(attributes, maxbound+1)
+            requiredoffset = minoffset > maxbound ? minoffset : maxbound+1
+            cumulativeoffset += _normalizeindents(attributes, requiredoffset)
+            maxbound = requiredoffset + _findmaxlength(attributes)
         end
-        collectted_attrs = filter(p -> !isnothing(p), map(p -> p.next, prev))
+        collectted_attrs = filter(p -> !isnothing(p), map(p -> p.next, collectted_attrs))
     end
     return cumulativeoffset
 end
 
 _normalizeindents(attributes_with_offsets::Tuple, requiredoffset::Int64) = begin
     cumulativeoffset = 0
-    for a in attributes
-        buffer = a.input
+    for a in attributes_with_offsets
+        shift!(a[1].parent, cumulativeoffset)
+        buffer = a[1].input
         curoffset = a[2]
         shift = requiredoffset - curoffset
-        shift == 0 && return
+        shift == 0 && continue
+        startposition = first(getposition(a[1]))
         shift > 0 ?
-            insert!(buffer," "^shift, curoffset) :
-            delete!(buffer, curoffset-shift:curoffset)
-        shift!(a, shift)
+            insert!(buffer," "^shift, startposition) :
+            delete!(buffer, startposition+shift:startposition-1)
+        shift!(a[1], shift)
+        shift!(a[1].parent.value, shift)
         cumulativeoffset += shift
     end
     return cumulativeoffset
@@ -276,7 +276,7 @@ _getupdatedchild!(value::TextElement, newchild::Element) = throw(DomainError(val
 _getupdatedchild!(value::Element, newchild::Element) = begin
     lastelement = last(value)
     lastelement.next = newchild
-    return lastelement
+    return value
 end
 Base.append!(node::Element, name::String, value::String) = begin
     newnode = "<$name>$value</$name>"
@@ -286,21 +286,29 @@ Base.append!(node::Element, name::String, value::String) = begin
     nameposition = offset + taglength:offset + ncodeunits(name)
     valuestart = last(nameposition) + taglength + 1
     valueposition =  valuestart:valuestart + ncodeunits(value) - 1
-    textvalue = TextElement(node.input, valueposition)
-    newelmnt = Element(node.input, nameposition, textvalue, node)
     if isnothing(lastchild)
+        textvalue = TextElement(node.input, valueposition)
+        newelmnt = Element(node.input, nameposition, textvalue, node)
         node.value = newelmnt
     else
+        startelement = first(getposition(lastchild))
+        indentstart = Base.findprev(node.input, "\n", startelement)
+        indentsize = startelement - 1 - indentstart
+        indent = "\n"*" "^(indentsize)
+        newnode = indent*newnode
+        textvalue = TextElement(node.input, valueposition .+ (indentsize+1))
+        newelmnt = Element(node.input, nameposition .+ (indentsize+1), textvalue, node)
         lastchild.next = newelmnt
     end
     insert!(node.input, newnode, offset)
+    shift!(node, ncodeunits(newnode), ChildElement)
 end
 
 Element(input::StringBuffer, name::Position) = begin
     Element(input, name, nothing, nothing, nothing, nothing)
 end
 Element(input::StringBuffer, name::Position, value::TextElement, parent::Parent) = begin
-    new_element = Element(input, name, nothing, value, nothing, parent)
+    new_element = Element(input, name, nothing, value, parent, nothing)
     return new_element
 end
 
@@ -309,6 +317,11 @@ shift!(node::Element, offset::Int64, whocalled::Type{ChildElement}) = begin
     isnothing(node.next) ? shift!(node.parent, offset, ChildElement) : shift!(node.next, offset)
 end
 
+shift!(node::Element, offset::Int64) = begin
+    node.name = node.name .+ offset
+    shift!(node.attributes, offset)
+    shift!(node.value, offset)
+end
 shift!(node::Element, offset::Int64, whocalled::Type{Element}) = begin
     node.name = node.name .+ offset
     shift!(node.attributes, offset)
