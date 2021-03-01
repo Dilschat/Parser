@@ -47,7 +47,6 @@ end
     @test buffer[2:3] == "tt"
     insert!(buffer, "ll", buffer.size)
     @test buffer[buffer.size - 2:buffer.size-1] == "ll"
-    @btime insert!($buffer, "ll", $buffer.size)
     buffer = StringBuffer("abc")
     replace!(buffer, "def", 1:3)
     @test buffer[1:3] == "def"
@@ -55,11 +54,9 @@ end
     @test buffer[1:4] == "abcf"
     replace!(buffer, "j", 1:3)
     @test buffer[1:2] == "jf"
-
     buffer = StringBuffer("<a>\n")
     replace!(buffer, "new", 2:2)
     @test string(buffer) == "<new>\n"
-    @btime replace!($buffer, "n", 2:2)
 
 end
 
@@ -69,5 +66,4 @@ end
     @test Base.findnext(buffer,"vvvvvvv", 1) == nothing
     @test Base.findprev(buffer, "bc", 5) == 2
     @test Base.findprev(buffer, "vvvvv", 5) == nothing
-    @btime Base.findprev($buffer, "vvvvv", 5)
 end

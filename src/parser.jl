@@ -10,15 +10,15 @@ end
 
 Base.showerror(io::IO, e::XmlException) = print(io, "Invalid xml ", e.var, "!")
 
-function parse_xml(input::String)::Document
+function parse_xml(input::String)::Element
     lexer = Lexer(input)
     return parse_xml(lexer)
 end
 
-function parse_xml(lexer::Lexer)::Document
+function parse_xml(lexer::Lexer)::Element
     buffer = StringBuffer(lexer.input)
     element = _parse_element(lexer, buffer, 1)
-    document = Document(buffer, element)
+    document = Element(buffer, element)
     return document
 end
 
@@ -68,7 +68,21 @@ _parsestartelement(
 ) = begin
     (lexeme, nextstate) = _getnext(lexer, nextstate)
     if getlexemetype(lexeme) == IDENTIFIER
-        element = Element(buffer, getposition(lexeme))
+        localnext = _findnext(lexer.input, '>', last(getposition(lexeme))) + 1
+        nexttuple = _getnext(lexer, localnext)
+        element = nothing
+        if isnothing(nexttuple)
+            element = Element{Element}(buffer, getposition(lexeme))
+        else
+            (peekedlexeme, _) = nexttuple
+            if getlexemetype(peekedlexeme) == TEXT
+                (peekedlexeme, _) = nexttuple
+                element = Element{TextElement}(buffer, getposition(lexeme))
+            else
+                (peekedlexeme, _) = nexttuple
+                element = Element{Element}(buffer, getposition(lexeme))
+            end
+        end
         push!(stack, element)
     else
         throw(XmlException("can't parse xml at position $nextstate"))
@@ -100,7 +114,7 @@ _parsecloseelement(
     if !isempty(stack)
         parent_element = first(stack)
         try
-            addchild!(parent_element, element)
+            Base.append!(parent_element, element)
         catch e
             throw(XmlException("can't parse xml at position $nextstate"))
         end
@@ -149,7 +163,7 @@ _parseattribute(lexer, buffer, lexeme, nextstate) = begin
         throw(XmlException("can't parse xml at position $nextstate"))
     end
     return (
-        Attribute(
+        Attribute{Element}(
             buffer,
             getposition(name),
             first(getposition(attrval))+1:last(getposition(attrval))-1,
@@ -165,7 +179,7 @@ _parsetext(
     nextstate::Int64,
     stack::Stack,
 ) = begin
-    text = TextElement(buffer, getposition(lexeme))
+    text = TextElement{Element}(buffer, getposition(lexeme))
     element = first(stack)
     if isnothing(element)
         throw(XmlException("can't parse xml at position $nextstate"))
@@ -193,5 +207,14 @@ _getnext(lexer, nextstate) = begin
         throw(XmlException("can't parse xml at position $nextstate"))
     end
     return next
+end
+
+_findnext(input::AbstractString, c::Char, i::Int64) = begin
+    length = ncodeunits(input)
+    while i <= length
+        if input[i] == c return i end
+         i += 1
+    end
+    return pos
 end
 #end # module

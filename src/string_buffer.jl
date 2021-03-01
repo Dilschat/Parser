@@ -1,7 +1,7 @@
 using DataStructures
 using StringViews
+using UnsafeArrays
 const RESIZE_COEF = 1.5
-
 """
     Simple string buffer, that supports only 1byte chars of UTF8
 """
@@ -26,8 +26,8 @@ end
 
 function Base.getindex(buffer::StringBuffer, range::UnitRange{Int64})
     !_in_bounds(buffer, range) &&
-        throw(BoundsError("Defined range is incorrect range: $range"))
-    StringView(@view buffer.value[range])
+        throw(BoundsError("Defined range is incorrect range"))
+    StringView(uview(buffer.value, range))
 end
 
 function Base.setindex!(buffer::StringBuffer, char::Char, i::Integer)
@@ -174,5 +174,5 @@ end
 
 _in_bounds(buffer::StringBuffer, i::Integer) = i >= 1 && i <= buffer.size
 
-_in_bounds(buffer::StringBuffer, i::UnitRange) =
+_in_bounds(buffer::StringBuffer, i::UnitRange{Int64}) =
     first(i) >= 1 && last(i) <= buffer.size

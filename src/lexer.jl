@@ -1,5 +1,6 @@
 import Base.iterate
-include("position.jl")
+
+Position = UnitRange{Int64}
 
 @enum LexemeType begin
     START_TAG       #<
