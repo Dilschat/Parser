@@ -68,21 +68,7 @@ _parsestartelement(
 ) = begin
     (lexeme, nextstate) = _getnext(lexer, nextstate)
     if getlexemetype(lexeme) == IDENTIFIER
-        localnext = _findnext(lexer.input, '>', last(getposition(lexeme))) + 1
-        nexttuple = _getnext(lexer, localnext)
-        element = nothing
-        if isnothing(nexttuple)
-            element = Element{Element}(buffer, getposition(lexeme))
-        else
-            (peekedlexeme, _) = nexttuple
-            if getlexemetype(peekedlexeme) == TEXT
-                (peekedlexeme, _) = nexttuple
-                element = Element{TextElement}(buffer, getposition(lexeme))
-            else
-                (peekedlexeme, _) = nexttuple
-                element = Element{Element}(buffer, getposition(lexeme))
-            end
-        end
+        element = Element(buffer, getposition(lexeme))
         push!(stack, element)
     else
         throw(XmlException("can't parse xml at position $nextstate"))

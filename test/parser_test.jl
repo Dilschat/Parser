@@ -4,30 +4,30 @@ include("../src/parser.jl")
 @testset "empty node test without attributes" begin
     xml = "< name />"
     element = parse_xml(xml)
-    @test getname(element.root) == "name"
+    @test getname(element[1]) == "name"
 end
 
 @testset "empty node test with attributes" begin
     xml = "< name a = \"a\" b = \"b\" />"
     element = parse_xml(xml)
-    @test getname(element.root) == "name"
-    @test getname(element.root.attributes) == "a"
-    @test getvalue(element.root.attributes) == "a"
-    @test getname(element.root.attributes.next) == "b"
+    @test getname(element[1]) == "name"
+    @test getname(element[1].attributes[1]) == "a"
+    @test getvalue(element[1].attributes[1]) == "a"
+    @test getname(element[1].attributes[2]) == "b"
 end
 
 @testset "text node test without attributes" begin
     xml = "< name >    asfasfasf    </name>"
     element = parse_xml(xml)
-    @test getname(element.root) == "name"
-    @test getvalue(element.root.value) == "asfasfasf"
+    @test getname(element[1]) == "name"
+    @test getvalue(element[1].value) == "asfasfasf"
 end
 
 @testset "child nodes test with attributes" begin
     xml = "< name B=\"A\"> <   asfasfasf   /> </name>"
     element = parse_xml(xml)
-    @test getname(element.root) == "name"
-    @test getname(element.root.value) == "asfasfasf"
+    @test getname(element[1]) == "name"
+    @test getname(element[1].value[1]) == "asfasfasf"
 end
 
 @testset "error test" begin
@@ -35,10 +35,6 @@ end
     @test_throws XmlException parse_xml(xml)
     xml = "< name B\"A\"> <   asfasfasf   /> </name>"
     @test_throws XmlException parse_xml(xml)
-    xml = "< name =\"A\"> <   asfasfasf   /> </name>"
-    @test_throws XmlException parse_xml(xml)
-    # xml = "< name B=\"A\" <   asfasfasf   /> </name>"
-    # @test_throws XmlException parse_xml(xml)
     xml = "< name B=\"A\"> <   asfasfasf   /> </na>"
     @test_throws XmlException parse_xml(xml)
 end
