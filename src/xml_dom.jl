@@ -91,10 +91,10 @@ getindex(node::Element, key::AbstractString) = begin
 end
 
 getindex(node::Element, key::Int64) =
-    try
-        return node.value[key]
-    catch e
-        throw(KeyError("no element with key: $key"))
+    if 1 <= key <= length(node.value)
+        return @inbounds node.value[key]
+    else
+        return throw(KeyError("no element with key: $key"))
     end
 
 "Returns attribute by key(String) or index(Int)"
@@ -111,9 +111,9 @@ getattribute(node::Element, name::AbstractString) = begin
 end
 
 getattribute(node::Element, idx::Int64) = begin
-    try
-        return node.attributes[idx]
-    catch e
+    if 1 <= idx <= length(node.attributes)
+        return @inbounds node.attributes[idx]
+    else
         return throw(KeyError("no attribute with key: $idx"))
     end
 end
@@ -151,9 +151,9 @@ getname(node::Element) = @inbounds node.input[node.name]
 "Returns the next node (siblings of attributes or elements)"
 getnext(node::AbstractElement) = nothing
 getnext(node::Attribute) =
-    try
-        getattribute(node.parent, node.index + 1)
-    catch e
+    if node.index + 1 <= length(node.parent.attributes)
+        @inbounds node.parent.attributes[node.index + 1]
+    else
         return nothing
     end
 
@@ -161,9 +161,9 @@ getnext(node::Element) = begin
     if isnothing(node.parent)
         return nothing
     else
-        try
-            return node.parent[node.index+1]
-        catch e
+        if node.index + 1 <= length(node.parent.value)
+            return @inbounds node.parent.value[node.index+1]
+        else
             return nothing
         end
     end
