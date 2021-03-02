@@ -21,13 +21,13 @@ end
 function Base.getindex(buffer::StringBuffer, i::Integer)
     !_in_bounds(buffer, i) &&
         throw(BoundsError("Bound error size: $size idx: $i"))
-    Char(buffer.value[i])
+    Char(@inbounds buffer.value[i])
 end
 
 function Base.getindex(buffer::StringBuffer, range::UnitRange{Int64})
     !_in_bounds(buffer, range) &&
         throw(BoundsError("Defined range is incorrect range"))
-    StringView(uview(buffer.value, range))
+    StringView(@inbounds uview(buffer.value, range))
 end
 
 function Base.setindex!(buffer::StringBuffer, char::Char, i::Integer)
@@ -55,7 +55,6 @@ function Base.setindex!(
 end
 
 Base.findprev(buffer::StringBuffer, val::String, startidx::Int64) = begin
-    stringvector = unsafe_wrap(Vector{UInt8}, val)
     valuelength = ncodeunits(val)
     endidx = valuelength + startidx - 1
     if endidx > length(buffer.value)
@@ -64,7 +63,7 @@ Base.findprev(buffer::StringBuffer, val::String, startidx::Int64) = begin
         endidx = endidx - offset
     end
     while startidx > 0
-        if stringvector == view(buffer.value, startidx:endidx)
+        if _equals(val, view(buffer.value, startidx:endidx))
             return startidx
         end
         startidx = startidx - 1
@@ -73,12 +72,22 @@ Base.findprev(buffer::StringBuffer, val::String, startidx::Int64) = begin
     return nothing
 end
 
+Base.findprev(buffer::StringBuffer, val::Char, startidx::Int64) = begin
+    ptr = pointer(buffer.value)
+    while startidx > 0
+        if UInt8(val) == unsafe_load( ptr,startidx)
+            return startidx
+        end
+        startidx = startidx - 1
+    end
+    return nothing
+end
+
 Base.findnext(buffer::StringBuffer, val::String, startidx::Int64) = begin
-    stringvector = unsafe_wrap(Vector{UInt8}, val)
     length = ncodeunits(val)
     endidx = length + startidx - 1
     while endidx <= buffer.size
-        if stringvector == view(buffer.value, startidx:endidx)
+        if _equals(val, view(buffer.value, startidx:endidx))
             return startidx
         end
         startidx = startidx + 1
@@ -106,10 +115,9 @@ function Base.append!(buffer::StringBuffer, str::String)
     required_size = buffer.size + UInt32(ncodeunits(str))
     required_size > capacity(buffer) && _resize!(buffer, required_size)
     unsafe_copyto!(
-        buffer.value,
-        buffer.size + 1,
-        unsafe_wrap(Vector{UInt8}, str),
-        1,
+        pointer(buffer.value,
+        buffer.size + 1),
+        pointer(str),
         ncodeunits(str),
     )
     buffer.size = required_size
@@ -176,3 +184,10 @@ _in_bounds(buffer::StringBuffer, i::Integer) = i >= 1 && i <= buffer.size
 
 _in_bounds(buffer::StringBuffer, i::UnitRange{Int64}) =
     first(i) >= 1 && last(i) <= buffer.size
+
+_equals(a::AbstractString, b::AbstractVector{UInt8}) = begin
+        if sizeof(a) != length(b) return false end
+        _memcmp(pointer(b), pointer(a), length(b)) == 0
+    end
+_memcmp(a::Ptr{UInt8}, b::Ptr{UInt8}, len::Int64) =
+        ccall(:memcmp, Cint, (Ptr{UInt8}, Ptr{UInt8}, Csize_t), a, b, len % Csize_t) % Int

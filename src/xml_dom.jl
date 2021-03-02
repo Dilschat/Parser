@@ -72,7 +72,7 @@ Base.getindex(node::Element, key::AbstractString) = begin
     i = 1
     stop = length(node.value)
     while i <= stop
-        if _equals(getname(node.value[i]), key) return node.value[i] end
+        if _equals(getname(@inbounds node.value[i]), key) return @inbounds node.value[i] end
         i+=1
     end
     return throw(KeyError("no element with key: $key"))
@@ -133,8 +133,8 @@ end
 
 "Returns a child of node"
 getvalue(node::AbstractElement) = nothing
-getvalue(node::Attribute) = node.input[node.value]
-getvalue(node::TextElement) = node.input[node.value]
+getvalue(node::Attribute) = @inbounds node.input[node.value]
+getvalue(node::TextElement) = @inbounds node.input[node.value]
 getvalue(node::Element) = node.value
 #getvalue(node::Document) = node.root
 
@@ -162,7 +162,7 @@ getattribute(node::Element, name::AbstractString) = begin
         i = 1
         stop = length(node.attributes)
         while i <= stop
-            if _equals(getname(node.attributes[i]), name) return node.attributes[i] end
+            if _equals(getname( @inbounds node.attributes[i]), name) return  @inbounds node.attributes[i] end
             i += 1
         end
     end
@@ -189,7 +189,7 @@ setvalue!(node::Attribute, value::String) = begin
     node.value = first(node.value):first(node.value)+new_length-1
     _shift!(getnext(node), offset)
     _shift!(getparent(node), offset, Attribute)
-    @code_warntype _alignattributes!(getparent(getparent(node)))
+    # @code_warntype _alignattributes!(getparent(getparent(node)))
     _alignattributes!(getparent(getparent(node)))
 end
 
@@ -256,57 +256,64 @@ addattribute!(element::Element, attribute::Attribute) = begin
 end
 
 _alignattributes!(node::Nothing) = nothing
+const container_for_attrs = Vector{Attribute{Element}}()
 _alignattributes!(node::Element) = begin
     maxbound = -1
-    collected_values = ()
+    len = length(node.value)
+    collected_values = resize!(container_for_attrs, 0)
     if isnothing(node.value) return nothing end
     i = 1
-    stop = length(node.value)
-    while i <= stop
-        nextattr = node.value[i].attributes
-        if !isnothing(nextattr) && !isempty(nextattr)
-            collected_values = (collected_values..., nextattr[1])
+    while i <= len
+        attrs = node.value[i].attributes
+        if !isnothing(attrs)
+            append!(collected_values, attrs)
         end
         i += 1
     end
     cumulativeoffset = _alignattributes!(collected_values, maxbound)
+
+
     # @code_warntype _alignattributes!(collected_values, maxbound)
     cumulativeoffset == 0 && return nothing
     _shift!(node, cumulativeoffset, ChildElement)
+    # @btime _shift!(node, cumulativeoffset, ChildElement)
 end
 
 #_alignattributes!(node::Document) = nothing
-_alignattributes!(prev::Tuple, maxbound::Int64) = begin
-    collectted_attrs = filter(i -> !isnothing(i), prev)
+AttributesWithOffsets = Vector{Tuple{Attribute{Element}, Int64}}
+_alignattributes!(allattrs::Vector{Attribute{Element}}, maxbound::Int64) = begin
     cumulativeoffset = 0
-    allattrs = ()
-    while !isempty(collectted_attrs)
-        allattrs = (allattrs..., collectted_attrs...,)
-        collectted_attrs = filter(p -> !isnothing(p), map(p -> getnext(p), collectted_attrs))
-    end
     groupped_attrs = _groupby(p -> getname(p), allattrs)
+
     for attributes in groupped_attrs
         attributes = _update_offsets(attributes)
         minoffset = _findmostleft(attributes)
         requiredoffset = minoffset > maxbound ? minoffset : maxbound+1
         cumulativeoffset += _normalizeindents(attributes, requiredoffset)
+
+
         maxbound = requiredoffset + _findmaxlength(attributes)
     end
     return cumulativeoffset
 end
 
-_normalizeindents(attributes_with_offsets::Tuple, requiredoffset::Int64) = begin
+_normalizeindents(attributes_with_offsets::Vector{Tuple{Attribute{Element}, Int64}}, requiredoffset::Int64) = begin
     cumulativeoffset = 0
     shift = 0
-    for a in attributes_with_offsets
+    i = 1
+    stop = length(attributes_with_offsets)
+    while i<=stop
+        a = @inbounds attributes_with_offsets[i]
+        i+=1
         _shift!(a[1].parent, shift)
+
         buffer = a[1].input
         curoffset = a[2]
         shift = requiredoffset - curoffset
         shift == 0 && continue
         startposition = first(getposition(a[1]))
         shift > 0 ?
-            insert!(buffer," "^shift, startposition) :
+            insert!(buffer,' '^shift, startposition) :
             delete!(buffer, startposition+shift:startposition-1)
         _shift!(a[1], shift)
         _shift!(a[1].parent.value, shift)
@@ -315,107 +322,123 @@ _normalizeindents(attributes_with_offsets::Tuple, requiredoffset::Int64) = begin
     return cumulativeoffset
 end
 
-_groupby(f, collection) = begin
-    sorteddtuple = ()
-    collection = _calculate_offsets(collection)
-    for i in collection
-        if isempty(sorteddtuple)
-            sorteddtuple = ((i,),)
-            continue
-        else
-            found = false
-            temp = ()
-            for group in sorteddtuple
-                if _equals(getname(i[1]), getname(group[1][1]))
-                    temp = (temp..., (group..., i,),)
-                    found = true
-                else
-                    temp = (temp..., group,)
-                end
+const container_for_sorted_attrs = Vector{Vector{Tuple{Attribute{Element}, Int64}}}()
 
+_groupby(f, attrs::Vector{Attribute{Element}}) = begin
+    sorteddtuple = resize!(container_for_sorted_attrs, 0)
+    collection = _calculate_offsets(attrs)
+    for attr_with_offset in collection
+            found = false
+            for group in sorteddtuple
+                if _equals(getname(attr_with_offset[1]), getname(group[1][1]))
+                    push!(group, attr_with_offset)
+                    found = true
+                end
             end
-            if !found temp = (temp..., (i,),) end
-            sorteddtuple = temp
-        end
+            if !found push!(sorteddtuple, [attr_with_offset]) end
     end
     sorteddtuple = _sortbyoffset(sorteddtuple)
     return sorteddtuple
 end
 
-_sortbyoffset(collection) = begin
-    sorted = ()
-    for attrs_with_offset in collection
-        if isempty(sorted)
-            sorted = (attrs_with_offset,)
-            continue
-        end
-        for i in eachindex(sorted)
-            if _isless(attrs_with_offset, sorted[i])
-                sorted = (sorted[begin:i-1]..., attrs_with_offset, sorted[i:end]..., )
-                break
-            end
-            if i == length(sorted)
-                sorted = (sorted..., attrs_with_offset, )
-                break
-            end
-        end
-    end
-    return sorted
+_sortbyoffset(collection::Vector{Vector{Tuple{Attribute{Element}, Int64}}}) = begin
+    sort!(collection, lt=_isless, alg=QuickSort)
 end
 
-_calculate_offsets(attributes) = map(a -> (a, first(getposition(a)) - findprev(a.input, "\n", first(getposition(a)))), attributes)
-_update_offsets(attributes) = map(a -> (a[1], first(getposition(a[1])) - findprev(a[1].input, "\n", first(getposition(a[1])))), attributes)
-_isless(a::Tuple, b::Tuple) = _findmostleft(a) < _findmostleft(b)
-_findmostleft(attributes_with_offsets::Tuple) = minimum(a -> a[2], attributes_with_offsets)
-_findmaxlength(attributes_with_offsets::Tuple) = maximum(a -> length(getposition(a[1])), attributes_with_offsets)
+const attr_with_offsets = Vector{Tuple{Attribute{Element}, Int64}}()
+
+_calculate_offsets(attributes::Vector{Attribute{Element}}) = begin
+    resize!(attr_with_offsets, length(attributes))
+    map!(a -> (a, first(getposition(a)) - findprev(a.input, '\n', first(getposition(a)))), attr_with_offsets, attributes)
+end
+_update_offsets(attributes::Vector{Tuple{Attribute{Element}, Int64}}) = begin
+    map!(a -> (a[1], first(getposition(a[1])) - findprev(a[1].input, '\n', first(getposition(a[1])))), attributes, attributes)
+end
+_isless(a::Vector{Tuple{Attribute{Element}, Int64}}, b::Vector{Tuple{Attribute{Element}, Int64}}) = _findmostleft(a) < _findmostleft(b)
+_findmostleft(attributes_with_offsets::Vector{Tuple{Attribute{Element}, Int64}}) = minimum(a -> a[2], attributes_with_offsets)
+_findmaxlength(attributes_with_offsets::Vector{Tuple{Attribute{Element}, Int64}}) = maximum(a -> length(getposition(a[1])), attributes_with_offsets)
 
 _shift!(node::Attribute, offset::Int64) = begin
-    node.name = node.name .+ offset
-    node.value = node.value .+ offset
-    next = getnext(node)
-    if !isnothing(next) _shift!(next, offset) end
+    i = node.index
+    attrs = node.parent.attributes
+    len = length(attrs)
+    while i<=len
+        node = @inbounds attrs[i]
+        node.name = node.name .+ offset
+        node.value = node.value .+ offset
+        i+=1
+    end
 end
 
 _shift!(attrs::Vector{Attribute{Element}}, offset::Int64) = begin
-    for a in attrs
+    foreach(a -> begin
         a.name = a.name .+ offset
         a.value = a.value .+ offset
-    end
+    end, attrs)
+    # i = 1
+    # len = length(attrs)
+    # while i <= len
+    #     a = @inbounds attrs[i]
+    #     a.name = a.name .+ offset
+    #     a.value = a.value .+ offset
+    #     i+=1
+    # end
 end
 
 _shift!(node::Element, offset::Int64, whocalled::Type{ChildElement}) = begin
     next = getnext(node)
-    isnothing(next) ? _shift!(node.parent, offset, ChildElement) : _shift!(next, offset, Element)
+    if !isnothing(next)
+        _shift!(next, offset)
+    end
+    _shift!(node.parent, offset, ChildElement)
 end
 
 _shift!(elements::Vector{Element}, offset::Int64) = begin
-    for node in elements
+    foreach(node -> begin
         node.name = node.name .+ offset
         _shift!(node.attributes, offset)
         _shift!(node.value, offset)
-    end
+    end, elements)
+    # i = 1
+    # len = length(elements)
+    # while i <= len
+    #     node = @inbounds elements[i]
+    #     node.name = node.name .+ offset
+    #     _shift!(node.attributes, offset)
+    #     _shift!(node.value, offset)
+    #     i+=1
+    # end
 end
 
 _shift!(node::Element, offset::Int64) = begin
-    node.name = node.name .+ offset
-    _shift!(node.attributes, offset)
-    _shift!(node.value, offset)
-    next = getnext(node)
-    if !isnothing(next) _shift!(next, offset) end
+    i = node.index
+    elements = node.parent.value
+    len = length(elements)
+    while i<=len
+        node = @inbounds elements[i]
+        node.name = node.name .+ offset
+        _shift!(node.attributes, offset)
+        _shift!(node.value, offset)
+        i+=1
+    end
 end
 
 _shift!(node::Element, offset::Int64, whocalled::Type{Element}) = begin
-    node.name = node.name .+ offset
-    _shift!(node.attributes, offset)
-    _shift!(node.value, offset)
-    next = getnext(node)
-    isnothing(next) ? _shift!(node.parent, offset, ChildElement) : _shift!(next, offset, Element)
+     _shift!(node, offset)
+     if !isnothing(node.parent)
+         _shift!(node.parent, offset, ChildElement)
+     end
 end
 
 _shift!(node::Element, offset::Int64, whocalled::Type{Attribute}) = begin
     _shift!(node.value, offset)
     next = getnext(node)
-    isnothing(next) ? _shift!(node.parent, offset, ChildElement) : _shift!(next, offset, Element)
+    if !isnothing(next)
+        _shift!(next, offset)
+    end
+    if !isnothing(node.parent)
+        _shift!(node.parent, offset, ChildElement)
+    end
 end
 
 _shift!(node::TextElement, offset::Int64) = begin

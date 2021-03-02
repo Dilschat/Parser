@@ -177,77 +177,78 @@ end
 
     @test getvalue(getattribute(doc["cfg"]["P"] , "C")) == "100"
     @test string(doc) == expected
-    @code_warntype setvalue!(getattribute(doc["cfg"]["S"][1] , "M"), "123")
 end
 
-# @testset "benchmark" begin
-#     example = """
-#     <cfg>
-#
-#     <C A="G" />
-#
-#     <S AlwaysOn="true">
-#     <xE M="03:00:00"                   T="S" />
-#     <xE M="04:00:00" Date="2019:12:09" T="S" />
-#     </S>
-#
-#     <AutoStart>false</AutoStart> <!-- DO NOT DELETE ME -->
-#
-#     <E>
-#     <S1>s1</S1>
-#     <S2>s2</S2>
-#     <S3>s3</S3>
-#     </E>
-#
-#     <AAA>
-#     <xB S="A"  B="C" D="E" F="22222.0" E="false" />
-#     <xB S="A"  B="C" D="E" F="22222"   E="false" />
-#     </AAA>
-#
-#     <!-- settings -->
-#     <Url u="url" Origin="url" />
-#
-#     <P C="100" D="30" />
-#
-#     <L A="true" O="0" />
-#
-#     <MDDelayAlarm Threshold="3000" Duration="5000" MinReconnectInterval="15000"/>
-#
-#     <!-- par par -->
-#     <PPP>0.001,  1,      0.0001,
-#                     1,      10,     0.001,
-#                     10,     100,    0.01,
-#                     100,    1000,   0.1,
-#                     1000,   5000,   1,
-#                     5000,   10000,  5,
-#                     10000,  50000,  10,
-#                     50000,  100000, 50,
-#                     100000, 500000, 100,
-#                     500000, 1000000, 500,
-#                     1000000, 10000000, 1000</PPP>
-#
-#     </cfg>
-#     """
-#
-#     doc = parse_xml(example)
-#     println("Parse time:")
-#     @btime parse_xml($example)
-#     println("Access element time:")
-#     @btime $doc["cfg"]["P"]
-#     println("Access element by idx:")
-#     @btime $doc[1][4]
-#     println("Access attribute time:")
-#     @btime getattribute($doc["cfg"]["S"][1] , "M")
-#     println("set attribute time:")
-#     attr = getattribute(doc["cfg"]["S"][1] , "M")
-#     @btime setvalue!($attr, "123")
-#     @btime $doc.input[$doc.name]
-#     next::Union{Element, Nothing} = doc
-#     @btime $next.name
-#     @code_warntype setvalue!(attr, "123")
-# end
+@testset "benchmark" begin
+    example = """
+    <cfg>
 
-#
+    <C A="G" />
+
+    <S AlwaysOn="true">
+    <xE M="03:00:00"                   T="S" />
+    <xE M="04:00:00" Date="2019:12:09" T="S" />
+    </S>
+
+    <AutoStart>false</AutoStart> <!-- DO NOT DELETE ME -->
+
+    <E>
+    <S1>s1</S1>
+    <S2>s2</S2>
+    <S3>s3</S3>
+    </E>
+
+    <AAA>
+    <xB S="A"  B="C" D="E" F="22222.0" E="false" />
+    <xB S="A"  B="C" D="E" F="22222"   E="false" />
+    </AAA>
+
+    <!-- settings -->
+    <Url u="url" Origin="url" />
+
+    <P C="100" D="30" />
+
+    <L A="true" O="0" />
+
+    <MDDelayAlarm Threshold="3000" Duration="5000" MinReconnectInterval="15000"/>
+
+    <!-- par par -->
+    <PPP>0.001,  1,      0.0001,
+                    1,      10,     0.001,
+                    10,     100,    0.01,
+                    100,    1000,   0.1,
+                    1000,   5000,   1,
+                    5000,   10000,  5,
+                    10000,  50000,  10,
+                    50000,  100000, 50,
+                    100000, 500000, 100,
+                    500000, 1000000, 500,
+                    1000000, 10000000, 1000</PPP>
+
+    </cfg>
+    """
+
+    doc = parse_xml(example)
+    println("set attribute time1:")
+    attr = getattribute(doc["cfg"]["S"][1] , "M")
+    @btime setvalue!($attr, "123")
+    println("set attribute time2:")
+    attr = getattribute(doc["cfg"]["S"][1] , "M")
+    @btime setvalue!($attr, "123")
+    println("Parse time:")
+    @btime parse_xml($example)
+    println("Access element time:")
+    @btime $doc["cfg"]["P"]
+    println("Access element by idx:")
+    @btime $doc[1][4]
+    println("Access attribute time:")
+    @btime getattribute($doc["cfg"]["S"][1] , "M")
+    @btime $doc.input[$doc.name]
+    next::Union{Element, Nothing} = doc
+    @btime $next.name
+end
+
+
 # abstract type AbstractElement end
 #
 # mutable struct Text <: AbstractElement a::Int end
