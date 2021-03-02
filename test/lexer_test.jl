@@ -60,5 +60,5 @@ end
 @testset "error test" begin
     xml = "\"<<><sa"
     lexer = Lexer(xml)
-    @test collect(lexer) == [Lexeme(ERROR, 1:8)]
+    @test collect(lexer) == [Lexeme(ERROR, 1:7 )]
 end

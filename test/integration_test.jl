@@ -35,7 +35,6 @@ end
     </name>
     """
     Base.append!(doc["name"], "new", "new")
-    println(doc)
     xml_set_attribute  = """
     <name>
         <name1  />
@@ -47,14 +46,9 @@ end
     """
 
     setvalue!(getattribute(doc["name"]["name4"] , "b"), "new")
-
-    println(doc)
     setvalue!(getattribute(doc["name"]["name2"] , "a"), "abc")
-    println(doc)
     setvalue!(getattribute(doc["name"]["name4"] , "a"), "abcd")
-    println(doc)
     setvalue!(getattribute(doc["name"]["name3"] , "a"), "ad")
-    println(doc)
     @test string(doc) == xml_set_attribute
 end
 
@@ -243,9 +237,6 @@ end
     @btime $doc[1][4]
     println("Access attribute time:")
     @btime getattribute($doc["cfg"]["S"][1] , "M")
-    @btime $doc.input[$doc.name]
-    next::Union{Element, Nothing} = doc
-    @btime $next.name
 end
 
 

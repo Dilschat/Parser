@@ -1,6 +1,6 @@
-#module Parser
-using DataStructures
 export parse_xml
+
+using DataStructures
 include("lexer.jl")
 include("xml_dom.jl")
 
@@ -203,4 +203,3 @@ _findnext(input::AbstractString, c::Char, i::Int64) = begin
     end
     return pos
 end
-#end # module

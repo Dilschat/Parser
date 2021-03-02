@@ -81,6 +81,9 @@ end
 @testset "Attribute shift" begin
     buffer = StringBuffer("abc=\"cde\"aaaaa")
     attr = Attribute{Element}(buffer, 1:3, 6:8)
+    element = Element(buffer, 1:1)
+    element.attributes = [attr]
+    attr.parent = element
     @test getname(attr) == "abc"
     @test getvalue(attr) == "cde"
     _shift!(attr, 2)
@@ -157,18 +160,28 @@ end
     @test string(childelmnt) == "<name1>value</name1>"
     @test string(new_element) == "<name><name1>value</name1></name>"
 end
-#TODO return string instead of text element
+
 @testset "Element shift" begin
-    buffer = StringBuffer("<name abc=\"cde\"aaaa ><name>value</name></name>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    buffer = StringBuffer(
+        "<name abc=\"cde\"aaaa ><name>value</name></name>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )
     attr = Attribute{Element}(buffer, 7:9, 11:15)
     txt = TextElement{Element}(buffer, 30:34)
     next_element = Element(buffer, 2:5, nothing, nothing, nothing, 2)
     new_element = Element(buffer, 2:5, [attr], txt, nothing, 1)
-    parent_element = Element(buffer, 2:5, nothing, [new_element, next_element], nothing, 1)
+    parent_element =
+        Element(buffer, 2:5, nothing, [new_element, next_element], nothing, 1)
     setparent!(new_element, parent_element)
     setparent!(next_element, parent_element)
     parent_next_element = Element(buffer, 2:5, nothing, nothing, nothing, 2)
-    doc = Element(buffer, 1:0, nothing, [parent_element, parent_next_element], nothing, 1)
+    doc = Element(
+        buffer,
+        1:0,
+        nothing,
+        [parent_element, parent_next_element],
+        nothing,
+        1,
+    )
     parent_element.parent = doc
     parent_next_element.parent = doc
     _shift!(new_element, 1, Attribute)
@@ -227,19 +240,6 @@ end
 #     @test string(doc) == "<name><name1>value</name1></name><!--Your comment-->"
 # end
 #
-@testset "Alignment test" begin
-    buffer = StringBuffer("abc1_cde2_qwe3")
-    attr1 = Attribute{Element}(buffer, 1:3, 5:10, nothing, 1)
-    attr2 = Attribute{Element}(buffer, 6:8, 3:4, nothing, 2)
-    attr3 = Attribute{Element}(buffer, 11:13, 3:4, nothing, 3)
-    attr4 = Attribute{Element}(buffer, 1:3, 5:10, nothing, 4)
-    attrs_with_offsets = ((attr2, 2), (attr1, 1), (attr3, 3), (attr4, 4))
-    @test _findmaxlength(attrs_with_offsets) == 11
-    @test _findmostleft(attrs_with_offsets) == 1
-    @test _isless(attrs_with_offsets, ((attr1, 2),)) == true
-    @test _isless(attrs_with_offsets, ((attr1, -1),)) == false
-    @test _sortbyoffset((((attr3, 3),), ((attr1, 1), (attr2, 2)), ((attr4, 4),),)) == (((attr1, 1), (attr2, 2)), ((attr3, 3),), ((attr4, 4),), )
-end
 
 @testset "add attribute test" begin
     buffer = StringBuffer("<name><name1>value</name1></name>")

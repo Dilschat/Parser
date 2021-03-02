@@ -46,7 +46,7 @@ end
     insert!(buffer, "tt", 2)
     @test buffer[2:3] == "tt"
     insert!(buffer, "ll", buffer.size)
-    @test buffer[buffer.size - 2:buffer.size-1] == "ll"
+    @test buffer[buffer.size-2:buffer.size-1] == "ll"
     buffer = StringBuffer("abc")
     replace!(buffer, "def", 1:3)
     @test buffer[1:3] == "def"
@@ -63,7 +63,7 @@ end
 @testset "findprev/findnext" begin
     buffer = StringBuffer("abcde")
     @test Base.findnext(buffer, "bc", 1) == 2
-    @test Base.findnext(buffer,"vvvvvvv", 1) == nothing
+    @test Base.findnext(buffer, "vvvvvvv", 1) == nothing
     @test Base.findprev(buffer, "bc", 5) == 2
     @test Base.findprev(buffer, "vvvvv", 5) == nothing
 end
